@@ -5,8 +5,8 @@ from serpapi import GoogleSearch
 import google.generativeai as genai
 #environment
 load_dotenv()
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+GOOGLE_API_KEY = "AIzaSyDrvZfFvqS7KXYdlW66MGSxRmXcDCq8XW0"
+SERPAPI_API_KEY = "c3fbf92d60b1e10262be7cb94e299bb8bea3b71037a7bc5d06bdb293130e87f5"
 genai.configure(api_key=GOOGLE_API_KEY)
 #---------------------------------------------------------
 
