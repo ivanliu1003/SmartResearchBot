@@ -1,78 +1,117 @@
 import os
-import adk
-from google.generativeai import configure as gg_configure
+import sys
+from dotenv import load_dotenv
 from serpapi import GoogleSearch
+import google.generativeai as genai
+#environment
+load_dotenv()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+genai.configure(api_key=GOOGLE_API_KEY)
+#---------------------------------------------------------
 
-# --- 1. 設定 API Keys ---
-# 建議使用環境變數來管理你的 API Keys，這更安全
-# 你需要先取得這兩個 Keys
-# Google Gemini API Key: https://aistudio.google.com/app/apikey
-# SerpApi Key: https://serpapi.com/manage-api-key (註冊後免費額度足夠專案使用)
-gg_configure(api_key=os.environ["AIzaSyDrvZfFvqS7KXYdlW66MGSxRmXcDCq8XW0"])
-SERPAPI_API_KEY = os.environ["c3fbf92d60b1e10262be7cb94e299bb8bea3b71037a7bc5d06bdb293130e87f5"]
-
-
-# --- 2. 定義你的「工具」(Tool) ---
-# 這是一個簡單的 Python 函數，但關鍵在於它的 "docstring" (註解)
-# LLM 會閱讀這個註解來理解這個工具的功能、參數和用途。
-def web_search(query: str) -> str:
+def web_search(query: str) -> dict:
     """
-    當你需要回答關於近期事件、特定人物、產品或任何無法在現有知識中找到的資訊時，請使用此工具進行網路搜尋。
-
-    Args:
-        query (str): 你想要搜尋的關鍵字或問題。
-
-    Returns:
-        str: 一個包含搜尋結果摘要的字串。
+    Use this tool when you need up-to-date or external information (recent events, prices, lists, rules updates,
+    or facts you are unsure about). Returns top search snippets.
     """
-    print(f"⚡ 正在執行網頁搜尋: {query}")
-    try:
-        params = {
-            "q": query,
-            "api_key": SERPAPI_API_KEY,
-            "engine": "google",
-        }
-        search = GoogleSearch(params)
-        results = search.get_dict()
+    params = {
+        "q": query,
+        "api_key": SERPAPI_API_KEY,
+        "engine": "google",
+    }
+    results = GoogleSearch(params).get_dict()
+    snippets = []
+    ab = results.get("answer_box", {})
+    if isinstance(ab, dict) and ab.get("snippet"):
+        snippets.append(ab["snippet"])
 
-        # 從搜尋結果中提取有用的片段
-        snippets = []
-        if "organic_results" in results:
-            for result in results["organic_results"][:5]: # 只取前5個結果
-                if "snippet" in result:
-                    snippets.append(result["snippet"])
-        
-        if "answer_box" in results and "snippet" in results["answer_box"]:
-            snippets.insert(0, results["answer_box"]["snippet"]) # 優先使用 Google 的 Answer Box
+    for r in results.get("organic_results", [])[:5]:
+        title = r.get("title", "")
+        snippet = r.get("snippet", "")
+        link = r.get("link", "")
+        if snippet:
+            snippets.append(f"{title} | {snippet} | {link}")
 
-        if not snippets:
-            return "網頁搜尋沒有找到相關資訊。"
+    if not snippets:
+        snippets = ["（搜尋沒有找到明確結果）"] #防止AI亂猜
 
-        return " ".join(snippets)
-
-    except Exception as e:
-        print(f"⚠️ 搜尋時發生錯誤: {e}")
-        return "網頁搜尋失敗。"
+    return {"top_results": snippets}
 
 
-# --- 3. 建立並設定你的「代理人」(Agent) ---
-# 我們告訴 Agent 它的「大腦」是哪個模型，以及它有哪些「工具」可以使用。
-research_agent = adk.Agent(
-    model="gemini-1.5-pro-latest",  # 使用支援工具呼叫的最新模型
-    tools=[web_search]             # 將我們定義的搜尋工具註冊給 Agent
-)
+def need_search(question: str) -> bool:
+    """
+    Ask Gemini to decide if web search is needed. Output strictly YES/NO.
+    """
+    model = genai.GenerativeModel("gemini-3-flash-preview")
+    prompt = f"""
+你是一個嚴謹的助理。請判斷回答問題是否需要「外部或即時資料」（例如網路搜尋）。
+如果問題涉及：近期事件、最新規則、價格、名單、特定網站內容、或你不確定的事實 -> 需要搜尋。
+如果是：概念解釋、基礎知識、數學推理、程式教學、一般不隨時間變動的內容 -> 不需要搜尋。
 
-# --- 4. 開始與 Agent 互動 ---
-print("你好！我是你的 AI 研究助理。有什麼問題儘管問！(輸入 'exit' 結束)")
+只回答 YES 或 NO。
 
-while True:
-    user_question = input("\n> ")
-    if user_question.lower() == 'exit':
-        print("感謝使用，再見！")
-        break
+問題：{question}
+""".strip()
 
-    # 使用 agent.chat() 讓 Agent 處理問題
-    # 它會自動決定是否要呼叫 web_search 工具
-    response = research_agent.chat(user_question)
+    resp = model.generate_content(prompt)
+    ans = (resp.text or "").strip().upper()
+    return ans.startswith("YES")
 
-    print(f"\n🤖 AI 回覆:\n{response}")
+# ----------------------------
+# 3) Final Answer: with optional search context
+# ----------------------------
+def answer(question: str) -> str:
+    # Decide
+    do_search = need_search(question)
+
+    context = ""
+    if do_search:
+        try:
+            data = web_search(question)
+            # Format search results
+            lines = []
+            for i, s in enumerate(data.get("top_results", [])[:5], start=1):
+                lines.append(f"[{i}] {s}")
+            context = "\n".join(lines)
+        except Exception as e:
+            context = f"（搜尋失敗：{e}。我將在沒有外部資料的情況下回答。）"
+
+    # Answer with Gemini Pro (stronger reasoning)
+    model = genai.GenerativeModel("gemini-3-flash-preview")
+
+    final_prompt = f"""
+你是一個嚴謹且清楚的研究助理。請回答使用者問題。
+- 如果提供了搜尋結果：請根據搜尋結果作答，並引用你用到的結果編號（例如 [1][3]）。
+- 如果未提供搜尋結果：請直接用你的知識回答。若你不確定，請坦白說明不確定之處，並建議下一步怎麼查。
+
+搜尋結果：
+{context if context else "（未使用搜尋）"}
+
+問題：
+{question}
+""".strip()
+
+    resp = model.generate_content(final_prompt)
+    return resp.text or ""
+
+# ----------------------------
+# 4) CLI loop
+# ----------------------------
+def main():
+    print("你好！我是你的 AI 研究助理（會自己決定要不要上網查）。輸入 exit 結束。")
+    while True:
+        q = input("\n> ").strip()
+        if not q:
+            continue
+        if q.lower() == "exit":
+            print("感謝使用，再見！")
+            break
+        try:
+            out = answer(q)
+            print("\n🤖 AI 回覆:\n" + out)
+        except Exception as e:
+            print(f"\n⚠️ 發生錯誤：{e}")
+
+if __name__ == "__main__":
+    main()
