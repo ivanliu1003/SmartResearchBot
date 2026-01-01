@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.35425.106
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "SmartResearchBot", "SmartResearchBot\SmartResearchBot.pyproj", "{AB04B536-E8D8-4094-8694-3A13BD190405}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AB04B536-E8D8-4094-8694-3A13BD190405}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AB04B536-E8D8-4094-8694-3A13BD190405}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BAA3ACDF-62C8-4429-ADFC-B7B220D08054}
+	EndGlobalSection
+EndGlobal
